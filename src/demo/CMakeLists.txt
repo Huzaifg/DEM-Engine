@@ -46,6 +46,7 @@ SET(DEMOS
 		DEMdemo_Fracture_Box
 		DEMdemo_Baffle_RTF_Benchmark
 		DEMdemo_Baffle_Acc_Benchmark
+		DEMdemo_Baffle_Train
 )
 
 # ------------------------------------------------------------------------------
