@@ -1219,6 +1219,10 @@ class DEMSolver {
                              CUB_REDUCE_FLAVOR reduce_flavor,
                              bool all_domain);
 
+
+    /// Create point cloud from mesh -> This is only required for GNS training 
+    /// which only takes points
+    void CreateMeshPoints(DEMMeshConnected& mesh, double delta, std::vector<float3>& points);
   private:
     ////////////////////////////////////////////////////////////////////////////////
     // Flag-like behavior-related variables cached on the host side

@@ -2274,4 +2274,84 @@ float* DEMSolver::dTInspectNoReduce(const std::shared_ptr<jitify::Program>& insp
     return pRes;
 }
 
-}  // namespace deme
+void DEMSolver::CreateMeshPoints(DEMMeshConnected& mesh, double delta, std::vector<float3>& points){
+    mesh.RepairDuplicateVertexes(1e-9);
+    auto bbox = mesh.GetBoundingBox();
+
+    const float EPSI = 1e-6;
+
+    float3 ray_origin;
+    for(float x = bbox.min.x; x < bbox.max.x; x += delta){
+        ray_origin.x = x + 1e-9;
+        for(float y = bbox.min.y; y < bbox.max.y; y += delta) {
+            ray_origin.y = y + 1e-9;
+            for(float z = bbox.min.z; z < bbox.max.z; z += delta) {
+                ray_origin.z = z + 1e-9;
+
+                float3 ray_dir[2] = {host_make_float3(5.f, 0.5f, 0.25f), host_make_float3(-3.f, 0.7f, 10.f)};
+                int intersectCounter[2] = {0, 0};
+
+                for (unsigned int i = 0; i < mesh.m_face_v_indices.size(); ++i){
+                    auto& t_face = mesh.m_face_v_indices[i];
+                    auto& v1 = mesh.m_vertices[t_face.x];
+                    auto& v2 = mesh.m_vertices[t_face.y];
+                    auto& v3 = mesh.m_vertices[t_face.z];
+
+                    // Find vectors for two edges sharing V1
+                    auto edge1 = v2 - v1;
+                    auto edge2 = v3 - v1;
+
+                    int t_inter[2] = {0, 0};
+
+                    for (unsigned int j = 0; j < 2; j++) {
+
+                        auto pvec = cross(ray_dir[j], edge2);
+                        auto det = dot(edge1 , pvec);
+
+                        if (det > -EPSI && det < EPSI) {
+                            t_inter[j] = 0;
+                            continue;
+                        }
+
+                        float inv_det = 1.0 / det;
+
+                        // calculate distance from V1 to ray origin
+                        auto tvec = ray_origin - v1;
+
+                        float uu = dot(tvec, pvec) * inv_det;
+
+                        // The intersection lies outside of the triangle
+                        if (uu < 0.0 || uu > 1.0) {
+                            t_inter[j] = 0;
+                            continue;
+                        }
+                        auto qvec = cross(tvec, edge1);
+
+                        float vv = dot(ray_dir[j], qvec) * inv_det;
+
+                        // The intersection lies outside of the triangle
+                        if (vv < 0.0 || uu + vv > 1.0) {
+                            t_inter[j] = 0;
+                            continue;
+                        }
+
+                        float tt = dot(edge2, qvec) * inv_det;
+                        if (tt > EPSI) {  /// ray intersection
+                            t_inter[j] = 1;
+                            continue;
+                        }
+
+                        t_inter[j] = 0;
+                    }
+
+                    intersectCounter[0] += t_inter[0];
+                    intersectCounter[1] += t_inter[1];
+                }
+                if (((intersectCounter[0] % 2) == 1) && ((intersectCounter[1] % 2) == 1))  // inside mesh
+                    points.push_back(host_make_float3(x, y, z));
+            }
+        }
+    }
+}  
+
+}// namespace deme

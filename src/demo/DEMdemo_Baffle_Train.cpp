@@ -422,6 +422,7 @@ int main(int argc, char* argv[]) {
     std::vector<std::array<double, 3>> baffle_pos(numBaffles);
     std::vector<std::shared_ptr<DEMMeshConnected>> baffles(numBaffles);
     std::vector<std::shared_ptr<DEMTracker>> baffle_trackers(numBaffles);
+    std::vector<std::vector<float3>> baffle_markers(numBaffles); // For outputting to GNS
 
     for(int i =0; i < numBaffles; i++){
         bool valid = false;
@@ -443,6 +444,8 @@ int main(int argc, char* argv[]) {
         // scale it
         baffle->Scale(make_float3(baffle_thickness, baffle_width, baffle_height));
         std::cout << "Total num of triangles: " << baffle->GetNumTriangles() << std::endl;
+
+        DEMSim.CreateMeshPoints(*baffle, 0.01, baffle_markers[i]);
 
         // Transform baffle positon to DEM frame 
         baffle_x -= bxDim / 2;

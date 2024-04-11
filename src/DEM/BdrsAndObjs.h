@@ -13,6 +13,7 @@
 #include <sstream>
 #include <array>
 #include <cmath>
+#include <cfloat>
 
 #include <nvmath/helper_math.cuh>
 #include <DEM/Defines.h>
@@ -21,6 +22,27 @@
 #include <DEM/HostSideHelpers.hpp>
 
 namespace deme {
+
+/// Axis-aligned bounding box.
+struct DEMAABB {
+    /// Default is an inverted bounding box.
+    DEMAABB();
+
+    /// Construct an AABB with provided corners.
+    DEMAABB(const float3& aabb_min, const float3& aabb_max);
+
+    /// Get AABB center.
+    float3 Center() const;
+
+    /// Get AABB dimensions.
+    float3 Size() const;
+
+    /// Return true foir an inverted bounding box.
+    bool IsInverted() const;
+
+    float3 min;  ///< low AABB corner
+    float3 max;  ///< high AABB corner
+};
 
 /// External object type
 /// Note all of them are `shell', not solid objects. If you need a solid cylinder for example, then use one CYLINDER as
@@ -246,6 +268,7 @@ class DEMMeshConnected : public DEMInitializer {
         }
     }
 
+    DEMAABB GetBoundingBox(std::vector<float3> vertices);
   public:
     // Number of triangle facets in the mesh
     size_t nTri = 0;
@@ -338,6 +361,14 @@ class DEMMeshConnected : public DEMInitializer {
     /// Utility function for merging multiple meshes.
     static DEMMeshConnected Merge(std::vector<DEMMeshConnected>& meshes);
 
+    /// Repair mesh from Chrono
+    int RepairDuplicateVertexes(float tolerance);
+
+    /// Get bounding box of mesh
+    DEMAABB GetBoundingBox(){
+        return GetBoundingBox(m_vertices);
+    }
+
     /// Get the number of triangles already added to this mesh
     size_t GetNumTriangles() const { return nTri; }
 
@@ -353,6 +384,7 @@ class DEMMeshConnected : public DEMInitializer {
         return DEMTriangle(m_vertices[m_face_v_indices[index].x], m_vertices[m_face_v_indices[index].y],
                            m_vertices[m_face_v_indices[index].z]);
     }
+
 
     /// Clear all data
     void Clear() {

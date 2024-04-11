@@ -37,6 +37,7 @@
 #include <DEM/BdrsAndObjs.h>
 #include <core/utils/WavefrontMeshLoader.hpp>
 
+
 namespace deme {
 
 using namespace WAVEFRONT;
@@ -57,6 +58,30 @@ std::vector<std::vector<int>> DEMMeshConnected::GetIndicesVertexesAsVectorOfVect
         res[i] = {vec[i].x, vec[i].y, vec[i].z};
     }
     return res;
+}
+
+// Bounding box stuff
+// DEMAABB GetBoundingBox() const {
+//     return DEMAABB();
+// }
+
+DEMAABB::DEMAABB() {
+    min = host_make_float3(FLT_MAX, FLT_MAX, FLT_MAX);
+    max = host_make_float3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+}
+
+DEMAABB::DEMAABB(const float3& a, const float3& b) : min(a), max(b) {}
+
+float3 DEMAABB::Center() const {
+    return 0.5f * (min + max);
+}
+
+float3 DEMAABB::Size() const {
+    return max - min;
+}
+
+bool DEMAABB::IsInverted() const{
+    return (min.x > max.x && min.y > max.y && min.z > max.z);
 }
 
 bool DEMMeshConnected::LoadWavefrontMesh(std::string input_file, bool load_normals, bool load_uv) {
@@ -131,6 +156,56 @@ bool DEMMeshConnected::LoadWavefrontMesh(std::string input_file, bool load_norma
     this->nTri = m_face_v_indices.size();
 
     return true;
+}
+
+int DEMMeshConnected::RepairDuplicateVertexes(float tolerance){
+    int nmerged = 0;
+    std::vector<float3> processed_verts;
+    std::vector<int> new_indexes(m_vertices.size());
+
+    // merge vertexes
+    for (int i = 0; i < m_vertices.size(); ++i) {
+        bool tomerge = false;
+        for (int j = 0; j < processed_verts.size(); ++j) {
+            auto diff = m_vertices[i] - processed_verts[j];
+            if (dot(diff,diff) < tolerance) {
+                tomerge = true;
+                ++nmerged;
+                new_indexes[i] = j;
+                break;
+            }
+        }
+        if (!tomerge) {
+            processed_verts.push_back(m_vertices[i]);
+            new_indexes[i] = (int)processed_verts.size() - 1;
+        }
+    }
+
+    m_vertices = processed_verts;
+
+    // Update the merged vertexes also in face indexes to vertexes
+    // Note: we DO NOT update the normal, color, UV, or material indices!
+    for (int i = 0; i < this->m_face_v_indices.size(); ++i) {
+        m_face_v_indices[i].x = new_indexes[m_face_v_indices[i].x];
+        m_face_v_indices[i].y = new_indexes[m_face_v_indices[i].y];
+        m_face_v_indices[i].z = new_indexes[m_face_v_indices[i].z];
+    }
+    return nmerged;
+}
+
+DEMAABB DEMMeshConnected::GetBoundingBox(std::vector<float3> vertices){
+    DEMAABB bbox;
+    for(const auto& v: vertices){
+        bbox.min.x = min(bbox.min.x, v.x);
+        bbox.min.y = min(bbox.min.y, v.y);
+        bbox.min.z = min(bbox.min.z, v.z);
+        
+        
+        bbox.max.x = max(bbox.max.x, v.x);
+        bbox.max.y = max(bbox.max.y, v.y);
+        bbox.max.z = max(bbox.max.z, v.z);
+    }
+    return bbox;
 }
 
 // Write the specified meshes in a Wavefront .obj file
