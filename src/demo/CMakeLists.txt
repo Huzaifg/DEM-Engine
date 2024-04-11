@@ -11,6 +11,11 @@ SET(LIBRARIES
 # ------------------------------------------------------------------------------
 # List of all executables
 # ------------------------------------------------------------------------------
+get_property(include_dirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES)
+message(STATUS "Current include directories:")
+foreach(dir ${include_dirs})
+	message(STATUS "  ${dir}")
+endforeach()
 
 SET(DEMOS
 		DEMdemo_Repose
@@ -39,6 +44,8 @@ SET(DEMOS
 		DEMdemo_FlexibleMesh
 		DEMdemo_Hopper_Sphere_Cylinder
 		DEMdemo_Fracture_Box
+		DEMdemo_Baffle_RTF_Benchmark
+		DEMdemo_Baffle_Acc_Benchmark
 )
 
 # ------------------------------------------------------------------------------

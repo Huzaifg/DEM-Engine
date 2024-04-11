@@ -31,6 +31,8 @@ include(FetchContent)
 include(cmake/FixNinjaColors.cmake)
 fix_ninja_colors()
 
+# Add the rapidjson directory to the include paths
+include_directories(${CMAKE_CURRENT_LIST_DIR}/thirdparty/rapidjson)
 
 find_package(CUDAToolkit REQUIRED)
 

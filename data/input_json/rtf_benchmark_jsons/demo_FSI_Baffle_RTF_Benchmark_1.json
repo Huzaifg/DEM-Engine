@@ -1,0 +1,28 @@
+{
+    "bxDim": 0.9,
+    "byDim": 0.9,
+    "bzDim": 0.4,
+    "baffle_thickness": 0.075,
+    "baffle_height": 0.15,
+    "baffle_width": 0.075,
+    "baffle_positions": [
+        {
+            "x": 0.3875,
+            "y": 0.1875,
+            "z": 0.0
+        },
+        {
+            "x": 0.3875,
+            "y": 0.8125,
+            "z": 0.0
+        },
+        {
+            "x": 0.6375,
+            "y": 0.5,
+            "z": 0.0
+        }
+    ],
+    "granular_thickness": 0.175,
+    "granular_height": 0.125,
+    "granular_width": 0.7
+}
