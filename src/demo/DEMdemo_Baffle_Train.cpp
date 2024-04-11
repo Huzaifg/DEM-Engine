@@ -17,7 +17,8 @@
 #include "filereadstream.h"
 
 using namespace deme;
-using namespace std::filesystem;
+// using namespace std::filesystem;
+using namespace rapidjson;
 
 const double math_PI = 3.1415927;
 
@@ -66,8 +67,8 @@ struct RandomParams {
 
     // Once the granualr particles are initialized, the following variables are set in order to ensure the baffles are
     // randomly placed at a sufficient distance
-    std::vector<std::vector<double>(3)> granular_pile_start;  // Vector of granular pile start coordinates
-    std::vector<std::vector<double>(3)> granular_pile_size;   // Vector of granular pile dimensions
+    std::vector<std::array<double, 3>> granular_pile_start;  // Vector of granular pile start coordinates
+    std::vector<std::array<double, 3>> granular_pile_size;   // Vector of granular pile dimensions
     int sampled_granular_piles;                         // Number of granular piles sampled
 };
 
@@ -199,7 +200,7 @@ bool checkBafflePlacement(const double baffle_x,
                           const double baffle_y,
                           const double baffle_z,
                           const RandomParams ranges,
-                          const std::vector<std::vector<double>>& baffles,
+                          const std::vector<std::array<double, 3>>& baffles,
                           const int baffle_index) {
     // Calculate baffle extents (considering half the dimensions)
     double baffle_x_start = baffle_x - baffle_thickness / 2;
@@ -306,18 +307,24 @@ int main(int argc, char* argv[]) {
     
     std::string paramsFileNumber = argv[1];
     // Set output directory
-    path out_dir = current_path();
+    std::filesystem::path out_dir = std::filesystem::current_path();
     std::string ranges_file;
+    RandomParams ranges;
 
     if(argc < 3){
-        out_dir += "/BAFFLE_FLOW_TRAIN/";
+        out_dir /= "BAFFLE_FLOW_TRAIN";
         ranges_file = argv[2];
     } else{
-        out_dir += argv[3] + "_BAFFLE_FLOW_TRAIN_" + argv[1] + "/";
+        out_dir /= (std::string(argv[3]) + "_BAFFLE_FLOW_TRAIN_" + argv[1]);
         ranges_file = argv[2];
     }
     
     create_directory(out_dir);
+    // // Above one fails sometimes
+    // if (!filesystem::create_directory(filesystem::path(out_dir))) {
+    //     std::cerr << "Error creating directory " << out_dir << std::endl;
+    //     return 1;
+    // }
 
 
     // Read the random ranges
@@ -412,7 +419,7 @@ int main(int argc, char* argv[]) {
 
     // Initialize baffles and its positions
     int numBaffles = random_int(ranges.no_obstacles[0], ranges.no_obstacles[1]);
-    std::vector<std::vector<double>(3)> baffle_pos(numBaffles);
+    std::vector<std::array<double, 3>> baffle_pos(numBaffles);
     std::vector<std::shared_ptr<DEMMeshConnected>> baffles(numBaffles);
     std::vector<std::shared_ptr<DEMTracker>> baffle_trackers(numBaffles);
 
@@ -425,7 +432,7 @@ int main(int argc, char* argv[]) {
             baffle_x = random_double(ranges.baffle_x[0], ranges.baffle_x[1]);
             baffle_y = random_double(ranges.baffle_y[0], ranges.baffle_y[1]);
             baffle_z = random_double(ranges.baffle_z[0], ranges.baffle_z[1]);
-            valid = checkBafflePlacement(baffle_x, baffle_y, baffle_z, ranges, baffles, i);
+            valid = checkBafflePlacement(baffle_x, baffle_y, baffle_z, ranges, baffle_pos, i);
             attempt++;
         }
         if (attempt == max_attempts) {
@@ -435,7 +442,7 @@ int main(int argc, char* argv[]) {
         auto baffle = DEMSim.AddWavefrontMeshObject((GET_DATA_PATH() / "mesh/cube.obj").string(), mat_type_baffle);
         // scale it
         baffle->Scale(make_float3(baffle_thickness, baffle_width, baffle_height));
-        std::cout << "Total num of triangles: " << baffle_1->GetNumTriangles() << std::endl;
+        std::cout << "Total num of triangles: " << baffle->GetNumTriangles() << std::endl;
 
         // Transform baffle positon to DEM frame 
         baffle_x -= bxDim / 2;
@@ -469,7 +476,7 @@ int main(int argc, char* argv[]) {
     float frame_time = 1.0 / output_fps;
     unsigned int out_steps = (unsigned int)(1.0 / (output_fps * step_size));
 
-    std::cout << "Output at " << fps << " FPS" << std::endl;
+    std::cout << "Output at " << output_fps << " FPS" << std::endl;
     unsigned int currframe = 0;
 
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
