@@ -29,10 +29,8 @@ double bzDim = 0.8;
 double t_end = 350 * 0.0025;
 bool output = true;
 float step_size = 5e-6;     
-double output_fps = 500; // Only works with timestep 5e-6 to get output at timestep 0.0025
+// double output_fps = 500; // Only works with timestep 5e-6 to get output at timestep 0.0025
 
-// Initial preset particle spacing for the largest domain
-double init_spacing = 0.01;
 
 
 // Size of the baffles
@@ -301,23 +299,22 @@ int main(int argc, char* argv[]) {
     DEMSim.InstructBoxDomainDimension(bxDim, byDim, bzDim);
     DEMSim.InstructBoxDomainBoundingBC("top_open", mat_type_wall);
 
-    
-    
-    
-    
-    std::string paramsFileNumber = argv[1];
+
     // Set output directory
     std::filesystem::path out_dir = std::filesystem::current_path();
     std::string ranges_file;
     RandomParams ranges;
 
     if(argc < 3){
-        out_dir /= "BAFFLE_FLOW_TRAIN";
+        out_dir += "/BAFFLE_FLOW_TRAIN";
         ranges_file = argv[2];
     } else{
-        out_dir /= (std::string(argv[3]) + "_BAFFLE_FLOW_TRAIN_" + argv[1]);
+        out_dir += "/" + (std::string(argv[3]) + "_BAFFLE_FLOW_TRAIN_" + std::string(argv[1]));
         ranges_file = argv[2];
     }
+
+    std::cout<<"Output directory: "<<out_dir<<std::endl;
+    std::cout<<"Ranges file: "<<ranges_file<<std::endl;
     
     create_directory(out_dir);
     // // Above one fails sometimes
@@ -337,9 +334,10 @@ int main(int argc, char* argv[]) {
     double max_vol_dif = 0.;
 
     // Calculate the particle radius that we need to meet the max limit of 17000 particles within a domain of 0.4*0.4*0.4 with 2.01 times the particle radius spacing
-    double volume_of_each_sphere = 0.4 * 0.4 * 0.4 / 17100;
+    double volume_of_each_sphere = (0.4 * 0.4 * 0.4) / (17100*3.);
     // This does not account for the additional spacing needed between each particle - this is okay, this means we will have always lesser than 17100 particles
     double particle_radius = std::cbrt(volume_of_each_sphere * 3 / (4 * math_PI)); // We need to use the same particle radius as physics chages with particle radius
+    std::cout << "Particle radius: " << particle_radius << std::endl;
 
     // Compute the granular pile size
     std::array<double, 2> granular_pile_size = {0.0, 0.0};
@@ -351,6 +349,8 @@ int main(int argc, char* argv[]) {
             max_vol_dif = vol_dif;
         }
     }
+
+    std::cout << "Granular pile size: " << granular_pile_size[0] << std::endl;
 
     
     // Get the position of the graunla pile
@@ -473,10 +473,8 @@ int main(int argc, char* argv[]) {
 
     DEMSim.Initialize();
 
-    float frame_time = 1.0 / output_fps;
-    unsigned int out_steps = (unsigned int)(1.0 / (output_fps * step_size));
+    float frame_time = 0.0025;
 
-    std::cout << "Output at " << output_fps << " FPS" << std::endl;
     unsigned int currframe = 0;
 
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
