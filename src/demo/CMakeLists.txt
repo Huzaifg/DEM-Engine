@@ -47,6 +47,8 @@ SET(DEMOS
 		DEMdemo_Baffle_RTF_Benchmark
 		DEMdemo_Baffle_Acc_Benchmark
 		DEMdemo_Baffle_Train
+		DEMdemo_WheelSlopeSlip
+		DEMdemo_WheelSlopeSlip_RTF
 )
 
 # ------------------------------------------------------------------------------

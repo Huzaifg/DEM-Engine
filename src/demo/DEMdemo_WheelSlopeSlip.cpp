@@ -3,15 +3,6 @@
 //
 //	SPDX-License-Identifier: BSD-3-Clause
 
-// =============================================================================
-// NOTE!!! You have to first finish ALL GRCPrep demos to obtain the GRC_3e6.csv
-// file, put it in the current directory, then run this demo.
-// A slip v.s. slope test, featuring a simplified Viper wheel and GRC-1 simulant.
-// The wheel in this simulation is represented by a collection of spheres (like
-// a ``big'' clump), unlike in WheelDP where the wheel is mesh.
-// WARNING: This is a huge simulation with millions of particles.
-// =============================================================================
-
 #include <DEM/API.h>
 #include <DEM/HostSideHelpers.hpp>
 #include <DEM/utils/Samplers.hpp>
@@ -22,66 +13,126 @@
 #include <filesystem>
 #include <map>
 #include <random>
+#include <cstdlib>
+#include <vector>
+#include <array>
 
 using namespace deme;
 
 const double math_PI = 3.1415927;
 
-int main() {
+unsigned long long comb(int n, int k) {
+    if (k < 0 || k > n)
+        return 0;
+    if (k > n - k)
+        k = n - k;
+    unsigned long long result = 1;
+    for (int i = 1; i <= k; ++i) {
+        result *= n - i + 1;
+        result /= i;
+    }
+    return result;
+}
+
+std::vector<double> cBernstein(int degree, double t) {
+    std::vector<double> B(degree + 1);
+    for (int i = 0; i <= degree; ++i) {
+        B[i] = comb(degree, i) * std::pow(t, i) * std::pow(1.0 - t, degree - i);
+    }
+    return B;
+}
+
+double deviationCausedHighest(double cp_deviation, double rad, double width) {
+    if (cp_deviation <= 0.) {
+        return 0.;
+    }
+    const int num_CPs = 4;
+    double t = 0.5;
+    std::vector<std::array<double, 2>> outer_CPs(num_CPs);
+    outer_CPs[0] = {0., width / 2};
+    outer_CPs[1] = {rad * cp_deviation, width / 2 - width / 3};
+    outer_CPs[2] = {rad * cp_deviation, width / 2 - width / 3 * 2};
+    outer_CPs[3] = {0., -width / 2};
+
+    std::vector<double> b = cBernstein(num_CPs - 1, t);
+
+    // Matrix multiplication (b @ outer_CPs)
+    std::array<double, 2> eval_pnt = {0., 0.};
+    for (int i = 0; i < num_CPs; ++i) {
+        eval_pnt[0] += b[i] * outer_CPs[i][0];
+        eval_pnt[1] += b[i] * outer_CPs[i][1];
+    }
+
+    return eval_pnt[0];
+}
+
+int main(int argc, char* argv[]) {
+    int cur_test = atoi(argv[1]);
+
     std::filesystem::path out_dir = std::filesystem::current_path();
-    out_dir += "/DemoOuput_WheelSlopeSlip";
+    out_dir += "/" + std::string(argv[8]);
     std::filesystem::create_directory(out_dir);
 
     // `World'
-    float G_mag = 9.81;
-    float step_size = 2e-6;
-    double world_size_y = 0.5;
-    double world_size_x = 2.04;
+    float G_mag = atof(argv[11]);
+    float step_size = 1e-5;     // 5e-6;
+    double world_size_y = 0.6;  // 0.52;
+    double world_size_x = 4.;
+    float safe_x = 1.6;
     double world_size_z = 4.0;
+    float w_r = atof(argv[10]);
+    double sim_end = 10.;
+    float z_adv_targ = 0.2;
 
     // Define the wheel geometry
-    float wheel_rad = 0.25;
-    float wheel_width = 0.2;
-    float wheel_mass = 5.;
-    float total_pressure = 110. * G_mag;
+    float wheel_rad = atof(argv[2]);
+    float eff_mass = atof(argv[3]);
+    float wheel_width = atof(argv[5]);
+    float wheel_mass = 5.;  // 8.7;
+    float total_pressure = eff_mass * G_mag;
     float added_pressure = (total_pressure - wheel_mass * G_mag);
     float wheel_IYY = wheel_mass * wheel_rad * wheel_rad / 2;
     float wheel_IXX = (wheel_mass / 12) * (3 * wheel_rad * wheel_rad + wheel_width * wheel_width);
+    float grouser_height = atof(argv[4]);
 
-    float Slopes_deg[] = {0, 2.5, 5, 7.5, 10};
-    unsigned int run_mode = 0;
-    unsigned int currframe = 0;
+    float Slope_deg = atof(argv[6]);
+    float cp_dev;
+    cp_dev = deviationCausedHighest(atof(argv[7]), wheel_rad, wheel_width);
 
-    for (float Slope_deg : Slopes_deg) {
+    {
         DEMSolver DEMSim;
-        DEMSim.SetVerbosity(INFO);
+        DEMSim.SetVerbosity(VERBOSITY::INFO);
         DEMSim.SetOutputFormat(OUTPUT_FORMAT::CSV);
         DEMSim.SetOutputContent(OUTPUT_CONTENT::ABSV);
         DEMSim.SetMeshOutputFormat(MESH_FORMAT::VTK);
-        DEMSim.SetContactOutputContent({"OWNER", "FORCE", "POINT"});
+        DEMSim.SetCollectAccRightAfterForceCalc(true);
 
         // E, nu, CoR, mu, Crr...
-        auto mat_type_wheel = DEMSim.LoadMaterial({{"E", 1e9}, {"nu", 0.3}, {"CoR", 0.5}, {"mu", 0.5}, {"Crr", 0.00}});
-        auto mat_type_terrain =
-            DEMSim.LoadMaterial({{"E", 1e9}, {"nu", 0.3}, {"CoR", 0.5}, {"mu", 0.5}, {"Crr", 0.00}});
-        // If you don't have this line, then mu between drum material and granular material will be the average of the
-        // two.
-        DEMSim.SetMaterialPropertyPair("mu", mat_type_wheel, mat_type_terrain, 0.8);
+        float mu = 0.4;
+        float mu_wheel = atof(argv[12]);
+        float mu_wall = 1.;
+        auto mat_type_wall =
+            DEMSim.LoadMaterial({{"E", 1e9}, {"nu", 0.3}, {"CoR", 0.4}, {"mu", mu_wall}, {"Crr", 0.00}});
+        auto mat_type_wheel =
+            DEMSim.LoadMaterial({{"E", 1e9}, {"nu", 0.3}, {"CoR", 0.4}, {"mu", mu_wheel}, {"Crr", 0.00}});
+        auto mat_type_terrain = DEMSim.LoadMaterial({{"E", 1e9}, {"nu", 0.3}, {"CoR", 0.4}, {"mu", mu}, {"Crr", 0.00}});
+        DEMSim.SetMaterialPropertyPair("mu", mat_type_wheel, mat_type_terrain, mu_wheel);
+        DEMSim.SetMaterialPropertyPair("mu", mat_type_wall, mat_type_terrain, mu_wall);
 
         DEMSim.InstructBoxDomainDimension(world_size_x, world_size_y, world_size_z);
-        DEMSim.InstructBoxDomainBoundingBC("top_open", mat_type_terrain);
+        DEMSim.InstructBoxDomainBoundingBC("top_open", mat_type_wall);
+
         float bottom = -0.5;
-        auto bot_wall = DEMSim.AddBCPlane(make_float3(0, 0, bottom), make_float3(0, 0, 1), mat_type_terrain);
+        auto bot_wall = DEMSim.AddBCPlane(make_float3(0, 0, bottom), make_float3(0, 0, 1), mat_type_wall);
         auto bot_wall_tracker = DEMSim.Track(bot_wall);
 
-        auto wheel_template = DEMSim.LoadClumpType(wheel_mass, make_float3(wheel_IXX, wheel_IYY, wheel_IXX),
-                                                   GetDEMEDataFile("clumps/ViperWheelSimple.csv"), mat_type_wheel);
-        // The file contains no wheel particles size info, so let's manually set them
-        wheel_template->radii = std::vector<float>(wheel_template->nComp, 0.005);
-        // Instantiate this wheel
-        auto wheel = DEMSim.AddClumps(wheel_template, make_float3(0));
+        auto wheel = DEMSim.AddWavefrontMeshObject(std::string(argv[9]), mat_type_wheel);
+        wheel->SetMass(wheel_mass);
+        wheel->SetMOI(make_float3(wheel_IXX, wheel_IYY, wheel_IXX));
         // Give the wheel a family number so we can potentially add prescription
-        wheel->SetFamily(10);
+        wheel->SetFamily(11);
+        DEMSim.SetFamilyFixed(11);
+        DEMSim.DisableContactBetweenFamilies(11, 0);
         // Track it
         auto wheel_tracker = DEMSim.Track(wheel);
 
@@ -91,22 +142,12 @@ int main() {
         float volume1 = 4.2520508;
         float mass1 = terrain_density * volume1;
         float3 MOI1 = make_float3(1.6850426, 1.6375114, 2.1187753) * terrain_density;
-        float volume2 = 2.1670011;
-        float mass2 = terrain_density * volume2;
-        float3 MOI2 = make_float3(0.57402126, 0.60616378, 0.92890173) * terrain_density;
         // Scale the template we just created
-        std::vector<double> scales = {0.014, 0.0075833, 0.0044, 0.003, 0.002, 0.0018333, 0.0017};
+        std::vector<double> scales = {0.008};
         // Then load it to system
-        std::shared_ptr<DEMClumpTemplate> my_template2 =
-            DEMSim.LoadClumpType(mass2, MOI2, GetDEMEDataFile("clumps/triangular_flat_6comp.csv"), mat_type_terrain);
         std::shared_ptr<DEMClumpTemplate> my_template1 =
             DEMSim.LoadClumpType(mass1, MOI1, GetDEMEDataFile("clumps/triangular_flat.csv"), mat_type_terrain);
-        std::vector<std::shared_ptr<DEMClumpTemplate>> ground_particle_templates = {my_template2,
-                                                                                    DEMSim.Duplicate(my_template2),
-                                                                                    my_template1,
-                                                                                    DEMSim.Duplicate(my_template1),
-                                                                                    DEMSim.Duplicate(my_template1),
-                                                                                    DEMSim.Duplicate(my_template1),
+        std::vector<std::shared_ptr<DEMClumpTemplate>> ground_particle_templates = {my_template1,
                                                                                     DEMSim.Duplicate(my_template1)};
         // Now scale those templates
         for (int i = 0; i < scales.size(); i++) {
@@ -122,18 +163,8 @@ int main() {
 
         // Now we load clump locations from a checkpointed file
         {
-            std::cout << "Making terrain..." << std::endl;
-            std::unordered_map<std::string, std::vector<float3>> clump_xyz;
-            std::unordered_map<std::string, std::vector<float4>> clump_quaternion;
-            try {
-                clump_xyz = DEMSim.ReadClumpXyzFromCsv("./GRC_3e6.csv");
-                clump_quaternion = DEMSim.ReadClumpQuatFromCsv("./GRC_3e6.csv");
-            } catch (...) {
-                std::cout << "You will need to finish the GRCPrep demos first to obtain the checkpoint file "
-                             "GRC_3e6.csv, in order to run this demo. This file is needed to generate the terrain bed."
-                          << std::endl;
-                return 1;
-            }
+            auto clump_xyz = DEMSim.ReadClumpXyzFromCsv("./GRC_3e6.csv");
+            auto clump_quaternion = DEMSim.ReadClumpQuatFromCsv("./GRC_3e6.csv");
             std::vector<float3> in_xyz;
             std::vector<float4> in_quat;
             std::vector<std::shared_ptr<DEMClumpTemplate>> in_types;
@@ -146,8 +177,6 @@ int main() {
                 auto this_type_quat = clump_quaternion[std::string(t_name)];
 
                 size_t n_clump_this_type = this_type_xyz.size();
-                std::cout << "Loading clump " << std::string(t_name) << " which has particle num: " << n_clump_this_type
-                          << std::endl;
                 // Prepare clump type identification vector for loading into the system (don't forget type 0 in
                 // ground_particle_templates is the template for rover wheel)
                 std::vector<std::shared_ptr<DEMClumpTemplate>> this_type(n_clump_this_type,
@@ -157,7 +186,6 @@ int main() {
                 in_xyz.insert(in_xyz.end(), this_type_xyz.begin(), this_type_xyz.end());
                 in_quat.insert(in_quat.end(), this_type_quat.begin(), this_type_quat.end());
                 in_types.insert(in_types.end(), this_type.begin(), this_type.end());
-                std::cout << "Added clump type " << t_num << std::endl;
                 // Our template names are 0000, 0001 etc.
                 t_num++;
             }
@@ -165,7 +193,8 @@ int main() {
             // Now, we don't need all particles loaded...
             std::vector<notStupidBool_t> elem_to_remove(in_xyz.size(), 0);
             for (size_t i = 0; i < in_xyz.size(); i++) {
-                if (std::abs(in_xyz.at(i).y) > (world_size_y - 0.05) / 2)
+                if (std::abs(in_xyz.at(i).y) > (world_size_y - 0.05) / 2 ||
+                    std::abs(in_xyz.at(i).x) > (world_size_x - 0.05) / 2)
                     elem_to_remove.at(i) = 1;
             }
             in_xyz.erase(std::remove_if(in_xyz.begin(), in_xyz.end(),
@@ -187,120 +216,137 @@ int main() {
             base_batch.SetTypes(in_types);
             base_batch.SetPos(in_xyz);
             base_batch.SetOriQ(in_quat);
-
-            // Make 2 copies of the batch of particles, then feed into simulation.
-            std::vector<float> x_shift_dist = {-0.5, 0.5};
-            std::vector<float> y_shift_dist = {0};
-            // Add some patches of such graular bed
-            for (float x_shift : x_shift_dist) {
-                for (float y_shift : y_shift_dist) {
-                    DEMClumpBatch batch_to_add = base_batch;
-                    std::vector<float3> my_xyz = in_xyz;
-                    std::for_each(my_xyz.begin(), my_xyz.end(), [x_shift, y_shift](float3& xyz) {
-                        xyz.x += x_shift;
-                        xyz.y += y_shift;
-                    });
-                    batch_to_add.SetPos(my_xyz);
-                    DEMSim.AddClumps(batch_to_add);
-                }
-            }
+            DEMSim.AddClumps(base_batch);
         }
 
+        // Now add a plane to compress the sample
+        // auto compressor = DEMSim.AddExternalObject();
+        // compressor->AddPlane(make_float3(0, 0, 0), make_float3(0, 0, -1), mat_type_terrain);
+        // compressor->SetFamily(2);
+        // auto compressor_tracker = DEMSim.Track(compressor);
+
         // Families' prescribed motions (Earth)
-        // float w_r = 0.8 * 2.45;
-        float w_r = 0.8;
-        float v_ref = w_r * wheel_rad;
+        float v_ref = w_r * (wheel_rad + cp_dev + grouser_height);
         double G_ang = Slope_deg * math_PI / 180.;
 
-        double sim_end = 5.;
         // Note: this wheel is not `dictated' by our prescrption of motion because it can still fall onto the ground
         // (move freely linearly)
         DEMSim.SetFamilyPrescribedAngVel(1, "0", to_string_with_precision(w_r), "0", false);
         DEMSim.AddFamilyPrescribedAcc(1, to_string_with_precision(-added_pressure * std::sin(G_ang) / wheel_mass),
                                       "none", to_string_with_precision(-added_pressure * std::cos(G_ang) / wheel_mass));
         DEMSim.SetFamilyFixed(10);
+        DEMSim.DisableContactBetweenFamilies(10, 10);
+        DEMSim.DisableContactBetweenFamilies(10, 255);
 
         // Some inspectors
         auto max_z_finder = DEMSim.CreateInspector("clump_max_z");
-        auto min_z_finder = DEMSim.CreateInspector("clump_min_z");
-        auto total_mass_finder = DEMSim.CreateInspector("clump_mass");
-        auto max_v_finder = DEMSim.CreateInspector("clump_max_absv");
+        // auto min_z_finder = DEMSim.CreateInspector("clump_min_z");
+        // auto total_mass_finder = DEMSim.CreateInspector("clump_mass");
+        // auto partial_mass_finder = DEMSim.CreateInspector("clump_mass", "return (Z <= -0.41);");
+        // auto max_v_finder = DEMSim.CreateInspector("clump_max_absv");
 
         float3 this_G = make_float3(-G_mag * std::sin(G_ang), 0, -G_mag * std::cos(G_ang));
         DEMSim.SetGravitationalAcceleration(this_G);
 
         DEMSim.SetInitTimeStep(step_size);
-        DEMSim.SetCDUpdateFreq(15);
-        // Max velocity info is generally just for the solver's reference and the user do not have to set it. The solver
-        // wouldn't take into account a vel larger than this when doing async-ed contact detection: but this vel won't
-        // happen anyway and if it does, something already went wrong.
-        DEMSim.SetMaxVelocity(50.);
-        // Error out vel is used to force the simulation to abort when something goes wrong and sim diverges.
-        DEMSim.SetErrorOutVelocity(60.);
-        DEMSim.SetExpandSafetyMultiplier(1.1);
-        // You usually don't have to worry about initial bin size. In very rare cases, init bin size is so bad that auto
-        // bin size adaption is effectless, and you should notice in that case kT runs extremely slow. Then in that case
-        // setting init bin size may save the simulation.
-        // DEMSim.SetInitBinSize(2 * scales.at(2));
+        DEMSim.SetCDUpdateFreq(10);
+        DEMSim.SetExpandSafetyAdder(v_ref);
+        DEMSim.SetCDNumStepsMaxDriftMultipleOfAvg(1);
+        DEMSim.SetCDNumStepsMaxDriftAheadOfAvg(5);
+        DEMSim.SetErrorOutVelocity(50.);
         DEMSim.Initialize();
 
-        // Compress until dense enough
-        unsigned int curr_step = 0;
-        unsigned int fps = 10;
-        unsigned int out_steps = (unsigned int)(1.0 / (fps * step_size));
-        double frame_time = 1.0 / fps;
-        unsigned int report_ps = 1000;
-        unsigned int report_steps = (unsigned int)(1.0 / (report_ps * step_size));
-        std::cout << "Output at " << fps << " FPS" << std::endl;
+        // Put the wheel in place, then let the wheel sink in initially
+        float init_x = -0.6;
+        if (Slope_deg < 21) {
+            init_x = -1.4;
+        }
+
+        float settle_time = 0.4;
+        { DEMSim.DoDynamicsThenSync(settle_time); }
 
         // Put the wheel in place, then let the wheel sink in initially
-        float max_z = -0.35;
-        float init_x = -0.6;
-        wheel_tracker->SetPos(make_float3(init_x, 0, max_z + wheel_rad));
-        for (double t = 0; t < 0.2; t += frame_time) {
-            DEMSim.DoDynamicsThenSync(frame_time);
-        }
+        float max_z = max_z_finder->GetValue();
+        wheel_tracker->SetPos(make_float3(init_x, 0, max_z + 0.03 + cp_dev + grouser_height + wheel_rad));
 
-        DEMSim.ChangeFamily(10, 1);
+        int report_steps = 100;
+        float report_time = report_steps * step_size;
+        unsigned int cur_step = 0;
+        double energy = 0.;
+        unsigned int report_num = 0;
 
-        bool start_measure = false;
-        for (double t = 0; t < sim_end; t += step_size, curr_step++) {
-            if (curr_step % out_steps == 0) {
+        DEMSim.ChangeFamily(11, 1);
+
+        {
+            {
                 char filename[200], meshname[200];
-                std::cout << "Outputting frame: " << currframe << std::endl;
-                sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), currframe);
-                // sprintf(meshname, "%s/DEMdemo_mesh_%04d.vtk", out_dir.c_str(), currframe);
+                sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), cur_test);
+                sprintf(meshname, "%s/DEMdemo_mesh_%04d.vtk", out_dir.c_str(), cur_test);
                 DEMSim.WriteSphereFile(std::string(filename));
-                // DEMSim.WriteMeshFile(std::string(meshname));
-                DEMSim.ShowThreadCollaborationStats();
-                currframe++;
+                DEMSim.WriteMeshFile(std::string(meshname));
             }
 
-            if (t >= 2. && !start_measure) {
-                start_measure = true;
+            std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+
+            std::cout << "Slip test num: " << cur_test << std::endl;
+            DEMSim.DoDynamicsThenSync(2.);
+
+            float3 V = wheel_tracker->Vel();
+            float x1 = wheel_tracker->Pos().x;
+            float z1 = x1 * std::sin(G_ang);
+            float x2, z2, z_adv = 0.;
+
+            float t;
+            for (t = 0; t < sim_end; t += report_time, report_num++)
+            {
+                if (z_adv >= z_adv_targ)
+                    break;
+                float3 angAcc = wheel_tracker->ContactAngAccLocal();
+                energy += std::abs((double)angAcc.y * wheel_IYY * w_r * (double)report_time);
+                x2 = wheel_tracker->Pos().x;
+                z_adv = x2 * std::sin(G_ang) - z1;
+                if (x2 > safe_x)
+                    break;
+
+                DEMSim.DoDynamics(report_time);
+
+                // Write output every frame
+                char filename[200], meshname[200];
+                sprintf(filename, "%s/DEMdemo_output_%04d_frame_%04d.csv", out_dir.c_str(), cur_test, report_num);
+                sprintf(meshname, "%s/DEMdemo_mesh_%04d_frame_%04d.vtk", out_dir.c_str(), cur_test, report_num);
+                DEMSim.WriteSphereFile(std::string(filename));
+                DEMSim.WriteMeshFile(std::string(meshname));
             }
 
-            if (curr_step % report_steps == 0 && start_measure) {
-                float3 V = wheel_tracker->Vel();
-                // float Vup = V.x * std::cos(G_ang) + V.z * std::sin(G_ang);
-                float slip = 1.0 - V.x / (w_r * wheel_rad);
-                std::cout << "Current slope: " << Slope_deg << std::endl;
-                std::cout << "Time: " << t << std::endl;
-                // std::cout << "Distance: " << dist_moved << std::endl;
-                std::cout << "X: " << wheel_tracker->Pos().x << std::endl;
-                std::cout << "V: " << V.x << std::endl;
-                std::cout << "Slip: " << slip << std::endl;
-                std::cout << "Max system velocity: " << max_v_finder->GetValue() << std::endl;
-            }
+            float adv = x2 - x1;
+            float eff_energy = eff_mass * z_adv * G_mag;
+            std::cout << "Time: " << t << std::endl;
+            std::cout << "Slip: " << 1. - adv / (v_ref * t) << std::endl;
+            std::cout << "Energy: " << energy << std::endl;
+            std::cout << "Power: " << energy / t << std::endl;
+            std::cout << "Efficiency: " << eff_energy / energy << std::endl;
+            std::cout << "Z advance: " << z_adv << std::endl;
 
-            DEMSim.DoDynamics(step_size);
+            std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double> time_sec =
+                std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+            std::cout << "Runtime: " << (time_sec.count()) << std::endl;
+
+            // {
+            //     // Overwrite previous...
+            //     char filename[200], meshname[200];
+            //     sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), cur_test);
+            //     sprintf(meshname, "%s/DEMdemo_mesh_%04d.vtk", out_dir.c_str(), cur_test);
+            //     DEMSim.WriteSphereFile(std::string(filename));
+            //     DEMSim.WriteMeshFile(std::string(meshname));
+            //     // std::cout << "Success: 1" << std::endl;
+            //     // std::cout << "=================================" << std::endl;
+            // }
         }
 
-        run_mode++;
-        DEMSim.ShowTimingStats();
-        DEMSim.ShowAnomalies();
+        // DEMSim.ShowTimingStats();
+        // DEMSim.ShowAnomalies();
     }
 
-    std::cout << "DEMdemo_WheelSlopeSlip demo exiting..." << std::endl;
     return 0;
 }
