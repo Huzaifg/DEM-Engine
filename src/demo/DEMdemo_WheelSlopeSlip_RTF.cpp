@@ -278,18 +278,9 @@ int main(int argc, char* argv[]) {
         DEMSim.ChangeFamily(11, 1);
 
         {
-            {
-                char filename[200], meshname[200];
-                sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), cur_test);
-                sprintf(meshname, "%s/DEMdemo_mesh_%04d.vtk", out_dir.c_str(), cur_test);
-                DEMSim.WriteSphereFile(std::string(filename));
-                DEMSim.WriteMeshFile(std::string(meshname));
-            }
 
             std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-
-            std::cout << "Slip test num: " << cur_test << std::endl;
-            DEMSim.DoDynamicsThenSync(2.);
+            // DEMSim.DoDynamicsThenSync(2.);
 
             float3 V = wheel_tracker->Vel();
             float x1 = wheel_tracker->Pos().x;
@@ -297,7 +288,21 @@ int main(int argc, char* argv[]) {
             float x2, z2, z_adv = 0.;
 
             float t;
-            for (t = 0; t < sim_end; t += report_time, report_num++) {
+            const int output_fps = 100;
+            unsigned int out_steps = (unsigned int)(1.0 / (output_fps * step_size));
+            unsigned int curr_frame = 0;
+            for (t = 0; t < sim_end; t += report_time, report_num++)
+            {
+                if (report_num % out_steps == 0) {
+                    float adv = x2 - x1;
+                    float eff_energy = eff_mass * z_adv * G_mag;
+                    std::cout << "Time: " << t << std::endl;
+                    std::cout << "Slip: " << 1. - adv / (v_ref * t) << std::endl;
+                    std::cout << "Energy: " << energy << std::endl;
+                    std::cout << "Power: " << energy / t << std::endl;
+                    std::cout << "Efficiency: " << eff_energy / energy << std::endl;
+                    std::cout << "Z advance: " << z_adv << std::endl;
+                }
                 if (z_adv >= z_adv_targ)
                     break;
                 float3 angAcc = wheel_tracker->ContactAngAccLocal();
@@ -309,35 +314,14 @@ int main(int argc, char* argv[]) {
 
                 DEMSim.DoDynamics(report_time);
             }
-
-            // float adv = x2 - x1;
-            // float eff_energy = eff_mass * z_adv * G_mag;
-            // std::cout << "Time: " << t << std::endl;
-            // std::cout << "Slip: " << 1. - adv / (v_ref * t) << std::endl;
-            // std::cout << "Energy: " << energy << std::endl;
-            // std::cout << "Power: " << energy / t << std::endl;
-            // std::cout << "Efficiency: " << eff_energy / energy << std::endl;
-            // std::cout << "Z advance: " << z_adv << std::endl;
-
             std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> time_sec =
                 std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
             std::cout << "Runtime: " << (time_sec.count()) << std::endl;
-
-            // {
-            //     // Overwrite previous...
-            //     char filename[200], meshname[200];
-            //     sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), cur_test);
-            //     sprintf(meshname, "%s/DEMdemo_mesh_%04d.vtk", out_dir.c_str(), cur_test);
-            //     DEMSim.WriteSphereFile(std::string(filename));
-            //     DEMSim.WriteMeshFile(std::string(meshname));
-            //     // std::cout << "Success: 1" << std::endl;
-            //     // std::cout << "=================================" << std::endl;
-            // }
         }
 
-        // DEMSim.ShowTimingStats();
-        // DEMSim.ShowAnomalies();
+        DEMSim.ShowTimingStats();
+        DEMSim.ShowAnomalies();
     }
 
     return 0;

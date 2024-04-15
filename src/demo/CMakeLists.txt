@@ -37,7 +37,6 @@ SET(DEMOS
 		DEMdemo_Shake
 		DEMdemo_WheelDP
 		DEMdemo_WheelDPSimplified
-		DEMdemo_WheelSlopeSlip
 		DEMdemo_Indentation
 		DEMdemo_SolarSystem
 		DEMdemo_Electrostatic
