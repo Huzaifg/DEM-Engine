@@ -269,11 +269,6 @@ int main(int argc, char* argv[]) {
         float max_z = max_z_finder->GetValue();
         wheel_tracker->SetPos(make_float3(init_x, 0, max_z + 0.03 + cp_dev + grouser_height + wheel_rad));
 
-        int report_steps = 100;
-        float report_time = report_steps * step_size;
-        unsigned int cur_step = 0;
-        double energy = 0.;
-        unsigned int report_num = 0;
 
         DEMSim.ChangeFamily(11, 1);
 
@@ -289,7 +284,14 @@ int main(int argc, char* argv[]) {
             float x2, z2, z_adv = 0.;
 
             float t;
-            const int output_fps = 100;
+            int report_fps = 100;
+            int report_steps = (unsigned int)(1.0 / (report_fps * step_size));;
+            float report_time = report_steps * step_size;
+            unsigned int cur_step = 0;
+            double energy = 0.;
+            unsigned int report_num = 0;
+
+            const int output_fps = 100; // This is just for vtk files -> This fps is actually applied as report_fps/output_fps
             unsigned int out_steps = (unsigned int)(1.0 / (output_fps * step_size));
             unsigned int curr_frame = 0;
             for (t = 0; t < sim_end; t += report_time, report_num++)
@@ -302,16 +304,17 @@ int main(int argc, char* argv[]) {
                     DEMSim.WriteSphereFile(std::string(filename));
                     DEMSim.WriteMeshFile(std::string(meshname));
                     curr_frame++;
-
-                    float adv = x2 - x1;
-                    float eff_energy = eff_mass * z_adv * G_mag;
-                    std::cout << "Time: " << t << std::endl;
-                    std::cout << "Slip: " << 1. - adv / (v_ref * t) << std::endl;
-                    std::cout << "Energy: " << energy << std::endl;
-                    std::cout << "Power: " << energy / t << std::endl;
-                    std::cout << "Efficiency: " << eff_energy / energy << std::endl;
-                    std::cout << "Z advance: " << z_adv << std::endl;
                 }
+
+                float adv = x2 - x1;
+                float eff_energy = eff_mass * z_adv * G_mag;
+                std::cout << "Time: " << t << std::endl;
+                std::cout << "Slip: " << 1. - adv / (v_ref * t) << std::endl;
+                std::cout << "Energy: " << energy << std::endl;
+                std::cout << "Power: " << energy / t << std::endl;
+                std::cout << "Efficiency: " << eff_energy / energy << std::endl;
+                std::cout << "Z advance: " << z_adv << std::endl;
+                
                 if (z_adv >= z_adv_targ)
                     break;
                 float3 angAcc = wheel_tracker->ContactAngAccLocal();
