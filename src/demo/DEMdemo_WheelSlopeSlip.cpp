@@ -70,7 +70,7 @@ int main(int argc, char* argv[]) {
     int cur_test = atoi(argv[1]);
 
     std::filesystem::path out_dir = std::filesystem::current_path();
-    out_dir += "/" + std::string(argv[8]);
+    out_dir += "/" + std::string(argv[8]) + "_" + std::to_string(cur_test);
     std::filesystem::create_directory(out_dir);
 
     // `World'
@@ -98,6 +98,19 @@ int main(int argc, char* argv[]) {
     float Slope_deg = atof(argv[6]);
     float cp_dev;
     cp_dev = deviationCausedHighest(atof(argv[7]), wheel_rad, wheel_width);
+
+    std::cout << "cur_test: " << cur_test << std::endl;
+    std::cout << "wheel_rad: " << wheel_rad << std::endl;
+    std::cout << "eff_mass: " << eff_mass << std::endl;
+    std::cout << "grouser_height: " << grouser_height << std::endl;
+    std::cout << "wheel_width: " << wheel_width << std::endl;
+    std::cout << "Slope_deg: " << Slope_deg << std::endl;
+    std::cout << "cp_dev: " << cp_dev << std::endl;
+    std::cout << "Out dir: " << out_dir << std::endl;
+    std::cout <<"mesh file: " << argv[9] << std::endl;
+    std::cout << "Ang vel: " << w_r << std::endl;
+    std::cout << "G_mag: " << G_mag << std::endl;
+    std::cout <<"mu wheel" << atof(argv[12]) << std::endl;
 
     {
         DEMSolver DEMSim;
@@ -274,8 +287,6 @@ int main(int argc, char* argv[]) {
 
         {
             std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-
-            std::cout << "Slip test num: " << cur_test << std::endl;
             // DEMSim.DoDynamicsThenSync(2.);
 
             float3 V = wheel_tracker->Vel();
@@ -291,7 +302,7 @@ int main(int argc, char* argv[]) {
             double energy = 0.;
             unsigned int report_num = 0;
 
-            const int output_fps = 100; // This is just for vtk files -> This fps is actually applied as report_fps/output_fps
+            const int output_fps = 10; // This is just for vtk files -> This fps is actually applied as report_fps/output_fps
             unsigned int out_steps = (unsigned int)(1.0 / (output_fps * step_size));
             unsigned int curr_frame = 0;
             for (t = 0; t < sim_end; t += report_time, report_num++)
@@ -314,7 +325,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "Power: " << energy / t << std::endl;
                 std::cout << "Efficiency: " << eff_energy / energy << std::endl;
                 std::cout << "Z advance: " << z_adv << std::endl;
-                
+
                 if (z_adv >= z_adv_targ)
                     break;
                 float3 angAcc = wheel_tracker->ContactAngAccLocal();
