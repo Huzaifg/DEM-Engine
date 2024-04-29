@@ -377,13 +377,15 @@ int main(int argc, char* argv[]) {
             std::cerr << "Max attempts reached for placing granular pile" << std::endl;
         }
 
+        // Store this before transforming the coordinates for the baffle check
+        ranges.granular_pile_start.push_back({granular_x, granular_y, granular_z});
+
         // Transform the granular pile start coordinates to match DEM coordinates which has box (0,0,0) at the center
         granular_x -= bxDim / 2;
         granular_y -= byDim / 2;
         granular_z -= bzDim / 2;
 
     
-        ranges.granular_pile_start.push_back({granular_x, granular_y, granular_z});
         ranges.granular_pile_size.push_back({granular_pile_size[i], granular_pile_size[i], granular_pile_size[i]});
 
         auto terrain_template = DEMSim.LoadSphereType(particle_radius * particle_radius * particle_radius * 1.8e3 * 4 / 3 * math_PI, particle_radius, mat_type_terrain);
@@ -432,7 +434,9 @@ int main(int argc, char* argv[]) {
         while(!valid && attempt < max_attempts){
             baffle_x = random_double(ranges.baffle_x[0], ranges.baffle_x[1]);
             baffle_y = random_double(ranges.baffle_y[0], ranges.baffle_y[1]);
-            baffle_z = random_double(ranges.baffle_z[0], ranges.baffle_z[1]);
+            // baffle_z = random_double(ranges.baffle_z[0], ranges.baffle_z[1]);
+            // Make sure baffle is on ground
+            baffle_z = 0.0 + baffle_height * 0.5;
             valid = checkBafflePlacement(baffle_x, baffle_y, baffle_z, ranges, baffle_pos, i);
             attempt++;
         }
@@ -451,7 +455,7 @@ int main(int argc, char* argv[]) {
         baffle_x -= bxDim / 2;
         baffle_y -= byDim / 2;
         baffle_z -= bzDim / 2;
-        baffle->SetInitPos(make_float3(baffle_x, baffle_y, baffle_z + 0.5 * baffle_height));
+        baffle->SetInitPos(make_float3(baffle_x, baffle_y, baffle_z));
         float density = 7850; //Kg/m^3
         float volume = baffle_thickness * baffle_width * baffle_height; // m^3
         float mass = density * volume; //Kg
