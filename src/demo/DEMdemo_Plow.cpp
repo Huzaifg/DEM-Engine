@@ -52,7 +52,7 @@ int main() {
     DEMSim.SetOutputFormat(OUTPUT_FORMAT::CSV);
 
     // Scale-defining numbers of this simulation.
-    float world_halfsize = 5.;
+    float world_halfsize = 0.5;
     float bowl_bottom = -world_halfsize;
 
     auto mat_type_walls = DEMSim.LoadMaterial({{"E", 1e8}, {"nu", 0.3}, {"CoR", 0.3}, {"mu", 0.5}});
@@ -68,7 +68,7 @@ int main() {
     float3 MOI = make_float3(1. / 5. * mass * (1 * 1 + 2 * 2), 1. / 5. * mass * (1 * 1 + 2 * 2),
                              1. / 5. * mass * (1 * 1 + 1 * 1));
     // We can scale this general template to make it smaller, like a DEM particle that you would actually use
-    float scaling = 0.03;
+    float scaling = 0.003;
     std::shared_ptr<DEMClumpTemplate> my_template =
         DEMSim.LoadClumpType(mass, MOI, GetDEMEDataFile("clumps/ellipsoid_2_1_1.csv"), mat_type_particles);
     my_template->Scale(scaling);
@@ -79,7 +79,7 @@ int main() {
     // the mesh is already created so.
     excavator->Move(make_float3(0, 0, 0), make_float4(0, 0, 0, 1));
     // Scale so it fits the size of our simulation world.
-    excavator->Scale(1. / 20.);
+    excavator->Scale(1. / 200.);
     // Initial position (mid-air), and initial quaternion (up-side-down).
     float3 init_pos = make_float3(0, 0.6 * world_halfsize, 0.2 * world_halfsize);
     float4 init_Q = make_float4(0.7071, 0, 0, 0.7071);  // 90 deg about x
@@ -108,6 +108,7 @@ int main() {
     // Note: AddClumps can be called multiple times before initialization to add more clumps to the system.
     auto the_pile = DEMSim.AddClumps(my_template, input_pile_xyz);
     the_pile->SetFamily(0);
+    std::cout << "Total Number of Particles: "<<input_pile_xyz.size() << std::endl;
 
     // Two sets of prescribed motions. We are just using families, since families are for bulk control of know
     // prescribed motions. You can use trackers too, but remember trackers are usually for fine-grain explicit motion
