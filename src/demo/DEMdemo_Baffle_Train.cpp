@@ -199,7 +199,8 @@ bool checkBafflePlacement(const double baffle_x,
                           const double baffle_z,
                           const RandomParams ranges,
                           const std::vector<std::array<double, 3>>& baffles,
-                          const int baffle_index) {
+                          const int baffle_index,
+                          const double particle_radius) {
     // Calculate baffle extents (considering half the dimensions)
     double baffle_x_start = baffle_x - baffle_thickness / 2;
     double baffle_y_start = baffle_y - baffle_width / 2;
@@ -208,7 +209,9 @@ bool checkBafflePlacement(const double baffle_x,
     double baffle_x_end = baffle_x + baffle_thickness / 2;
     double baffle_y_end = baffle_y + baffle_width / 2;
     double baffle_z_end = baffle_z + baffle_height / 2;
+    double big_particle_radius = 2.01 * particle_radius;
 
+    bool granular_pile_check = true;
     // Loop over all the granular piles
     for (int i = 0; i < ranges.sampled_granular_piles; i++) {
         // Calculate granular pile start and end coordinates
@@ -221,20 +224,18 @@ bool checkBafflePlacement(const double baffle_x,
         double gp_end_z = gp_start_z + ranges.granular_pile_size[i][2];
 
         // Check for overlap -> If there is any overlap, return false
-        if (!((gp_end_x < baffle_x_start) ||  // Granular pile completely left of baffle
-              (gp_start_x > baffle_x_end) ||  // Granular pile completely right of baffle
-              (gp_end_y < baffle_y_start) ||  // Granular pile completely below baffle
-              (gp_start_y > baffle_y_end) ||  // Granular pile completely above baffle
-              (gp_end_z < baffle_z_start) ||  // Granular pile completely in front of baffle
-              (gp_start_z > baffle_z_end))    // Granular pile completely behind baffle
+        if (!((gp_end_x + big_particle_radius < baffle_x_start) ||  // Granular pile completely left of baffle
+              (gp_start_x - big_particle_radius > baffle_x_end) ||  // Granular pile completely right of baffle
+              (gp_end_y + big_particle_radius < baffle_y_start) ||  // Granular pile completely below baffle
+              (gp_start_y - big_particle_radius > baffle_y_end) ||  // Granular pile completely above baffle
+              (gp_end_z + big_particle_radius < baffle_z_start) ||  // Granular pile completely in front of baffle
+              (gp_start_z - big_particle_radius > baffle_z_end))   // Granular pile completely behind baffle
         ) {
-            return false;
+            granular_pile_check = false;
+            break;
         }
     }
-
-    if (baffle_index == 0)
-        return true;  // No baffles to check against (first baffle is always valid
-
+    bool baffle_check = true;
     // Loop over all the other baffles to ensure they are placed away from each other
     for (int i = 0; i < baffle_index; i++) {
         // Calculate baffle extents (considering half the dimensions)
@@ -247,18 +248,18 @@ bool checkBafflePlacement(const double baffle_x,
         double other_baffle_z_end = baffles[i][2] + baffle_height / 2;
 
         // Check for overlap -> If there is any overlap, return false
-        if (!((other_baffle_x_end < baffle_x_start) ||  // Other baffle completely left of baffle
-              (other_baffle_x_start > baffle_x_end) ||  // Other baffle completely right of baffle
-              (other_baffle_y_end < baffle_y_start) ||  // Other baffle completely below baffle
-              (other_baffle_y_start > baffle_y_end) ||  // Other baffle completely above baffle
-              (other_baffle_z_end < baffle_z_start) ||  // Other baffle completely in front of baffle
-              (other_baffle_z_start > baffle_z_end))    // Other baffle completely behind baffle
+        if (!((other_baffle_x_end + big_particle_radius < baffle_x_start) ||  // Other baffle completely left of baffle
+              (other_baffle_x_start - big_particle_radius > baffle_x_end) ||  // Other baffle completely right of baffle
+              (other_baffle_y_end + big_particle_radius < baffle_y_start) ||  // Other baffle completely below baffle
+              (other_baffle_y_start - big_particle_radius > baffle_y_end) ||  // Other baffle completely above baffle
+              (other_baffle_z_end + big_particle_radius < baffle_z_start) ||  // Other baffle completely in front of baffle
+              (other_baffle_z_start - big_particle_radius > baffle_z_end))    // Other baffle completely behind baffle
         ) {
-            return false;
+            baffle_check = false;
+            break;
         }
     }
-    // If we reach here, the baffle doesn't overlap any piles
-    return true;
+    return granular_pile_check && baffle_check;
 }
 
 int main(int argc, char* argv[]) {
@@ -437,7 +438,7 @@ int main(int argc, char* argv[]) {
             // baffle_z = random_double(ranges.baffle_z[0], ranges.baffle_z[1]);
             // Make sure baffle is on ground
             baffle_z = 0.0 + baffle_height * 0.5;
-            valid = checkBafflePlacement(baffle_x, baffle_y, baffle_z, ranges, baffle_pos, i);
+            valid = checkBafflePlacement(baffle_x, baffle_y, baffle_z, ranges, baffle_pos, i, particle_radius);
             attempt++;
         }
         if (attempt == max_attempts) {
