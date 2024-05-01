@@ -444,7 +444,7 @@ int main(int argc, char* argv[]) {
         if (attempt == max_attempts) {
             std::cerr << "Max attempts reached for placing baffle " << i << std::endl;
         }
-
+        baffle_pos.push_back({baffle_x, baffle_y, baffle_z});
         auto baffle = DEMSim.AddWavefrontMeshObject((GET_DATA_PATH() / "mesh/cube.obj").string(), mat_type_baffle);
         // scale it
         baffle->Scale(make_float3(baffle_thickness, baffle_width, baffle_height));
@@ -468,8 +468,6 @@ int main(int argc, char* argv[]) {
         DEMSim.DisableContactBetweenFamilies(255, i+2);
         auto baffle_tracker = DEMSim.Track(baffle);
 
-
-        baffle_pos.push_back({baffle_x, baffle_y, baffle_z});
         baffles.push_back(baffle);
         baffle_trackers.push_back(baffle_tracker);
     }
