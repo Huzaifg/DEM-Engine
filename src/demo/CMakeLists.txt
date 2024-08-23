@@ -48,6 +48,7 @@ SET(DEMOS
 		DEMdemo_Baffle_Train
 		DEMdemo_WheelSlopeSlip
 		DEMdemo_WheelSlopeSlip_RTF
+		DEMdemo_komatsu1
 )
 
 # ------------------------------------------------------------------------------
