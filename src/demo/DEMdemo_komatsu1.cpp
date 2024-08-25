@@ -55,12 +55,13 @@ int main() {
     float world_halfsize = 0.5;
     float bowl_bottom = -world_halfsize;
 
-    auto mat_type_walls = DEMSim.LoadMaterial({{"E", 1e8}, {"nu", 0.3}, {"CoR", 0.3}, {"mu", 0.5}});
-    auto mat_type_particles = DEMSim.LoadMaterial({{"E", 1e8}, {"nu", 0.3}, {"CoR", 0.}, {"mu", 0.58}});
+    auto mat_type_walls = DEMSim.LoadMaterial({{"E", 1e8}, {"nu", 0.3}, {"CoR", 0.3}, {"mu", 0.5}, {"Crr", 0.3}});
+    auto mat_type_particles = DEMSim.LoadMaterial({{"E", 1e8}, {"nu", 0.3}, {"CoR", 0.05}, {"mu", 0.6}, {"Crr", 0.05}});
     // auto mat_type_particles = DEMSim.LoadMaterial({{"E", 1e7}, {"nu", 0.3}, {"CoR", 0.3}, {"mu", 0.5}});
     // If you don't have this line, then CoR between wall material and granular material will be 0.5 (average of the
     // two).
-    DEMSim.SetMaterialPropertyPair("CoR", mat_type_walls, mat_type_particles, 0.);
+    DEMSim.SetMaterialPropertyPair("CoR", mat_type_walls, mat_type_particles, 0.3);
+    DEMSim.SetMaterialPropertyPair("Crr", mat_type_walls, mat_type_particles, 0.3);
     DEMSim.SetMaterialPropertyPair("mu", mat_type_walls, mat_type_particles, 0.5);
 
     // Define the terrain particle templates
@@ -69,40 +70,78 @@ int main() {
     float3 MOI = make_float3(1. / 5. * mass * (1 * 1 + 2 * 2), 1. / 5. * mass * (1 * 1 + 2 * 2),
                              1. / 5. * mass * (1 * 1 + 1 * 1));
     // We can scale this general template to make it smaller, like a DEM particle that you would actually use
-    float scaling = 0.003; // Pretty much 5 mm particle
+    float scaling = 0.003;  // Pretty much 5 mm particle
     std::shared_ptr<DEMClumpTemplate> my_template =
         DEMSim.LoadClumpType(mass, MOI, GetDEMEDataFile("clumps/ellipsoid_2_1_1.csv"), mat_type_particles);
     my_template->Scale(scaling);
 
+    auto mat_type_bucket = DEMSim.LoadMaterial({{"E", 1e8}, {"nu", 0.3}, {"CoR", 0.3}, {"mu", 0.5}, {"Crr", 0.0}});
+    DEMSim.SetMaterialPropertyPair("CoR", mat_type_particles, mat_type_bucket, 0.0);
+    DEMSim.SetMaterialPropertyPair("Crr", mat_type_particles, mat_type_bucket, 0.0);
+    // Add the excavator mesh
+    auto excavator = DEMSim.AddWavefrontMeshObject(GetDEMEDataFile("mesh/komatsu_bucket_2.obj"), mat_type_bucket);
+    excavator->Move(make_float3(0, 0, 0), make_float4(0, 0, 0, 1));
+    excavator->Scale(1. / 15);
+    float bucket_height_approx = 0.105;  // This is half height
+    float3 init_pos = make_float3(-0.1, 0, -world_halfsize + bucket_height_approx + 2 * scaling);
+    float4 init_Q = make_float4(0.7071, 0, 0, 0.7071);  // 90 deg about x
+
+    excavator->SetInitPos(init_pos);
+    excavator->SetInitQuat(init_Q);
+    excavator->SetFamily(10);
+    DEMSim.DisableContactBetweenFamilies(0, 10);
+    DEMSim.SetFamilyFixed(10);
+
+    // Excavator moves along x axis with velocity 0.1 m/s
+    DEMSim.SetFamilyPrescribedLinVel(1, "0.1", "0", "0");
+
+    // Excavator rotates about its own frame with angular velocity pi/8 rad/s
+    DEMSim.SetFamilyPrescribedAngVel(2, "-3.14 / 8", "0", "0");
+    // At the same time, the excavator also moves at an angle of 45 degrees with respect to the x axis with 0.05 m/s
+    // magnitude
+    DEMSim.SetFamilyPrescribedLinVel(2, "0.03535", "0", "0.03535");
+
+    // Go back to the original position
+    DEMSim.SetFamilyPrescribedLinVel(1, "-0.1", "0", "0");
+
+    // Excavator
+
     // Generate initial clumps for piling
     float spacing = 2. * scaling;
     float fill_halfwidth = world_halfsize - 4. * scaling;
-    float fill_height = world_halfsize * 1.5;
+    float fill_height = 0.173 * 1.5 - 3 * scaling;
+    float height_needed = 0.173;
     float fill_bottom = bowl_bottom + 3. * scaling;
     float max_length_at_layer;
     float max_width_at_layer;
+    float tan_alpha = tan(30. * 3.14 / 180.);
     PDSampler sampler(spacing);
     // Use a PDSampler-based clump generation process. For PD sampler it is better to do it layer by layer.
     std::vector<float3> input_pile_xyz;
     float layer_z = 0;
-    while (layer_z < fill_height) {
-        max_length_at_layer = world_halfsize;
-        max_width_at_layer = (fill_height - layer_z) / tan_alpha;
-        float3 sample_center = make_float3(0.35, 0, fill_bottom + layer_z);
-        auto layer_xyz = sampler.SampleBox(sample_center, make_float3(max_width_at_layer, max_length_at_layer, 0));
-
-        for(auto& xyz : layer_xyz) {
-            if(xyz.y <= max_width_at_layer){
+    float theoritical_layer_z = 0;
+    while (theoritical_layer_z < height_needed) {
+        max_width_at_layer = fill_halfwidth;
+        max_length_at_layer = (height_needed - theoritical_layer_z) / (tan_alpha);
+        std::cout << max_length_at_layer << std::endl;
+        float3 sample_center = make_float3(0.5, 0, fill_bottom + layer_z);
+        auto layer_xyz = sampler.SampleBox(sample_center, make_float3(max_length_at_layer, max_width_at_layer, 0));
+        // for (const auto& point : layer_xyz) {
+        //     std::cout << "Layer Point: (" << point.x << ", " << point.y << ", " << point.z << ")" << std::endl;
+        // }
+        for (auto& xyz : layer_xyz) {
+            if (xyz.x < (world_halfsize - 4 * scaling)) {
                 input_pile_xyz.push_back(xyz);
             }
         }
 
         layer_z += 4.5 * scaling;
+        theoritical_layer_z += scaling;
     }
     // Note: AddClumps can be called multiple times before initialization to add more clumps to the system.
     auto the_pile = DEMSim.AddClumps(my_template, input_pile_xyz);
     the_pile->SetFamily(0);
-    std::cout << "Total Number of Particles: "<<input_pile_xyz.size() << std::endl;
+    std::cout << "Total Number of Particles: " << input_pile_xyz.size() << std::endl;
 
     float step_size = 5e-6;
     DEMSim.InstructBoxDomainDimension({-world_halfsize, world_halfsize}, {-world_halfsize, world_halfsize},
@@ -124,18 +163,28 @@ int main() {
     unsigned int curr_step = 0;
 
     // Settle
-    DEMSim.DoDynamicsThenSync(1.5);
+    AdvanceSimulation(DEMSim, 1., step_size, out_steps, out_dir, curr_step, currframe);
+    // DEMSim.ChangeFamily(10, 1);
+    // DEMSim.EnableContactBetweenFamilies(0, 10);
 
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
 
-    // Use 3 seconds to plow
+    // This is the family that moves the bucket along x axis with velocity 0.1 m/s
+    // We do this for 3 seconds
+    DEMSim.ChangeFamily(10, 1);
     AdvanceSimulation(DEMSim, 3, step_size, out_steps, out_dir, curr_step, currframe);
 
+    // Rotate the bucket and move it upwards
+    DEMSim.ChangeFamily(1, 2);
     AdvanceSimulation(DEMSim, 2, step_size, out_steps, out_dir, curr_step, currframe);
 
-    AdvanceSimulation(DEMSim, 2, step_size, out_steps, out_dir, curr_step, currframe);
-
+    // Go back to the original position
+    DEMSim.ChangeFamily(2, 3);
     AdvanceSimulation(DEMSim, 3, step_size, out_steps, out_dir, curr_step, currframe);
+
+    // Then rest in-place for a while
+    DEMSim.ChangeFamily(3, 10);
+    AdvanceSimulation(DEMSim, 1, step_size, out_steps, out_dir, curr_step, currframe);
 
     std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> time_sec = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
