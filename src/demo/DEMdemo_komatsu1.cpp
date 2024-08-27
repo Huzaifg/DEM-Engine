@@ -70,7 +70,7 @@ int main() {
     float3 MOI = make_float3(1. / 5. * mass * (1 * 1 + 2 * 2), 1. / 5. * mass * (1 * 1 + 2 * 2),
                              1. / 5. * mass * (1 * 1 + 1 * 1));
     // We can scale this general template to make it smaller, like a DEM particle that you would actually use
-    float scaling = 0.003;  // Pretty much 5 mm particle
+    float scaling = 0.003;  // Pretty much 6 mm particle
     std::shared_ptr<DEMClumpTemplate> my_template =
         DEMSim.LoadClumpType(mass, MOI, GetDEMEDataFile("clumps/ellipsoid_2_1_1.csv"), mat_type_particles);
     my_template->Scale(scaling);
@@ -79,30 +79,30 @@ int main() {
     DEMSim.SetMaterialPropertyPair("CoR", mat_type_particles, mat_type_bucket, 0.0);
     DEMSim.SetMaterialPropertyPair("Crr", mat_type_particles, mat_type_bucket, 0.0);
     // Add the excavator mesh
-    auto excavator = DEMSim.AddWavefrontMeshObject(GetDEMEDataFile("mesh/komatsu_bucket_2.obj"), mat_type_bucket);
+    auto excavator = DEMSim.AddWavefrontMeshObject(GetDEMEDataFile("mesh/komatsu_bucket_2.obj"), mat_type_walls);
     excavator->Move(make_float3(0, 0, 0), make_float4(0, 0, 0, 1));
     excavator->Scale(1. / 15);
     float bucket_height_approx = 0.105;  // This is half height
     float3 init_pos = make_float3(-0.1, 0, -world_halfsize + bucket_height_approx + 2 * scaling);
     float4 init_Q = make_float4(0.7071, 0, 0, 0.7071);  // 90 deg about x
-
     excavator->SetInitPos(init_pos);
     excavator->SetInitQuat(init_Q);
     excavator->SetFamily(10);
-    DEMSim.DisableContactBetweenFamilies(0, 10);
+
+    // auto excavator = DEMSim.AddWavefrontMeshObject(GetDEMEDataFile("mesh/excavator.obj"), mat_type_bucket);
+    // excavator->Move(make_float3(0, 0, 0), make_float4(0, 0, 0, 1));
+    // excavator->Scale(1. / 200);
+    // float bucket_height_approx = 0.105;  // This is half height
+    // float3 init_pos = make_float3(-0.1, 0, -0.2);
+    // float4 init_Q = make_float4(0, 0, 0.7071, 0.7071);  // 90 deg about x
+    // excavator->SetInitPos(init_pos);
+    // excavator->SetInitQuat(init_Q);
+    // excavator->SetFamily(10);
+
+    // DEMSim.DisableContactBetweenFamilies(0, 10);
+    // DEMSim.EnableContactBetweenFamilies(0, 10);
+
     DEMSim.SetFamilyFixed(10);
-
-    // Excavator moves along x axis with velocity 0.1 m/s
-    DEMSim.SetFamilyPrescribedLinVel(1, "0.1", "0", "0");
-
-    // Excavator rotates about its own frame with angular velocity pi/8 rad/s
-    DEMSim.SetFamilyPrescribedAngVel(2, "-3.14 / 8", "0", "0");
-    // At the same time, the excavator also moves at an angle of 45 degrees with respect to the x axis with 0.05 m/s
-    // magnitude
-    DEMSim.SetFamilyPrescribedLinVel(2, "0.03535", "0", "0.03535");
-
-    // Go back to the original position
-    DEMSim.SetFamilyPrescribedLinVel(1, "-0.1", "0", "0");
 
     // Excavator
 
@@ -143,6 +143,19 @@ int main() {
     the_pile->SetFamily(0);
     std::cout << "Total Number of Particles: " << input_pile_xyz.size() << std::endl;
 
+    // Excavator moves along x axis with velocity 0.1 m/s
+    DEMSim.SetFamilyPrescribedLinVel(1, "0.1", "0", "0");
+
+    // Excavator rotates about its own frame with angular velocity pi/8 rad/s
+    DEMSim.SetFamilyPrescribedAngVel(2, "0", "0", "3.14 / 8");
+    // At the same time, the excavator also moves at an angle of x degrees with respect to the x axis with 0.05 m/s
+    // magnitude
+    DEMSim.SetFamilyPrescribedLinVel(2, "0.045", "0", "0.065");
+
+    // Go back to the original position
+    DEMSim.SetFamilyPrescribedLinVel(3, "-0.1", "0", "0");
+    DEMSim.SetFamilyPrescribedAngVel(3, "0", "0", "0");
+
     float step_size = 5e-6;
     DEMSim.InstructBoxDomainDimension({-world_halfsize, world_halfsize}, {-world_halfsize, world_halfsize},
                                       {-world_halfsize, world_halfsize});
@@ -171,12 +184,14 @@ int main() {
 
     // This is the family that moves the bucket along x axis with velocity 0.1 m/s
     // We do this for 3 seconds
+    // DEMSim.EnableContactBetweenFamilies(0, 10);
     DEMSim.ChangeFamily(10, 1);
+
     AdvanceSimulation(DEMSim, 3, step_size, out_steps, out_dir, curr_step, currframe);
 
     // Rotate the bucket and move it upwards
     DEMSim.ChangeFamily(1, 2);
-    AdvanceSimulation(DEMSim, 2, step_size, out_steps, out_dir, curr_step, currframe);
+    AdvanceSimulation(DEMSim, 1.5, step_size, out_steps, out_dir, curr_step, currframe);
 
     // Go back to the original position
     DEMSim.ChangeFamily(2, 3);
@@ -184,7 +199,7 @@ int main() {
 
     // Then rest in-place for a while
     DEMSim.ChangeFamily(3, 10);
-    AdvanceSimulation(DEMSim, 1, step_size, out_steps, out_dir, curr_step, currframe);
+    AdvanceSimulation(DEMSim, 0.5, step_size, out_steps, out_dir, curr_step, currframe);
 
     std::chrono::high_resolution_clock::time_point end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> time_sec = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
