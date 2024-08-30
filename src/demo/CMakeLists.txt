@@ -49,6 +49,7 @@ SET(DEMOS
 		DEMdemo_WheelSlopeSlip
 		DEMdemo_WheelSlopeSlip_RTF
 		DEMdemo_komatsu1
+		rassor_single_drum
 )
 
 # ------------------------------------------------------------------------------
