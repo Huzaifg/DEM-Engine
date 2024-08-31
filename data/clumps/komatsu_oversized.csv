@@ -1,0 +1,20 @@
+x,y,z,r
+0.01,-0.37,0,0.5
+0.57,-0.01,0,0.5
+0,0,-0.31,0.5
+0,0,0.32,0.5
+-0.56,-0.01,0,0.5
+1.32,0.46,0,0.65
+0.66,0.46,0,0.65
+0,0.46,0,0.65
+-0.67,0.46,0,0.65
+-1.34,0.46,0,0.65
+
+# Bounding Box Dimensions: Length=3.9600000000000004, Width=1.98, Height=1.6300000000000001
+# Dimension Ratios: Length/Width=2.0000000000000004, Length/Height=2.4294478527607364, Width/Height=1.214723926380368
+#Estimated Volume of Combined Spheres: 5.362073233704001 cubic meters
+
+#Volume Moments of Inertia about Centroid Coordinate Axes
+#Ix: 	1.444845 (+/- 1.6e-06)
+#Iy: 	5.4947616 (+/- 2.1e-06)
+#Iz: 	5.8418724 (+/- 2.1e-06)

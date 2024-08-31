@@ -50,7 +50,8 @@ SET(DEMOS
 		DEMdemo_WheelSlopeSlip_RTF
 		DEMdemo_komatsu1
 		rassor_single_drum
-)
+		DEMdemo_KTerrainPrep_Part1
+		)
 
 # ------------------------------------------------------------------------------
 # Add all executables
