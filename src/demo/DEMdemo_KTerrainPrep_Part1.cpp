@@ -41,12 +41,32 @@ int main() {
     auto mat_type_wheel = DEMSim.LoadMaterial({{"E", 1e9}, {"nu", 0.3}, {"CoR", 0.3}, {"mu", 0.5}});
 
     // Define the simulation world
-    double world_y_size = 0.99;
-    DEMSim.InstructBoxDomainDimension(world_y_size, world_y_size, world_y_size);
+    double world_x_size = 1.0;
+    double world_y_size = 1.0;
+    double world_z_size = 2.0;
+    float sampleheight = 0.15;      // for the generation of the random material
+    double bottom = -sampleheight;
+    float size_z_batch = 3 * sampleheight;
+    float sample_halfheight = size_z_batch / 2;
+    // DEMSim.InstructBoxDomainDimension(world_y_size, world_y_size, world_z_size);
+    DEMSim.InstructBoxDomainDimension({-world_x_size / 1.5, world_x_size / 1.5},
+                                      {-world_y_size / 1.5, world_y_size / 1.5}, {2.0 * bottom, world_z_size});
+
+    auto top_plane = DEMSim.AddWavefrontMeshObject("../data/mesh/box.obj", mat_type_terrain);
+    top_plane->SetInitPos(make_float3(0, 0, bottom - 0.010));
+    top_plane->SetMass(1.);
+    top_plane->Scale(make_float3(world_x_size / 2.0, world_y_size / 2.0, 2.0));
+    top_plane->SetFamily(10);
+    DEMSim.SetFamilyFixed(10);
     // Add 5 bounding planes around the simulation world, and leave the top open
     DEMSim.InstructBoxDomainBoundingBC("top_open", mat_type_terrain);
-    float bottom = -0.5;
+
     DEMSim.AddBCPlane(make_float3(0, 0, bottom), make_float3(0, 0, 1), mat_type_terrain);
+
+    // Shake the terrain to increase bulk density
+    std::string shake_pattern_xz = " 0.002 * sin( 50 * 2 * deme::PI * t)";
+    std::string shake_pattern_y = " 0.002 * sin( 200 * 2 * deme::PI * t)";
+    DEMSim.SetFamilyPrescribedLinVel(9, shake_pattern_xz, shake_pattern_xz, shake_pattern_y);
 
     // Undersized has been skipped for now - Needs to be added back again sometime
     // Define the terrain particle templates
@@ -114,8 +134,9 @@ int main() {
     std::discrete_distribution<int> discrete_dist(grain_perc.begin(), grain_perc.end());
 
     // Sampler to use
-    HCPSampler sampler(scales.at(0) * 5);
-
+    // HCPSampler sampler(scales.at(0) * 5);
+    // These dimensions are according to the largest particle unfortunately
+    GridSampler sampler(make_float3(0.18, 0.08, 0.07));
     // Make ready for simulation
     float step_size = 1e-6;
     DEMSim.SetInitTimeStep(step_size);
@@ -130,7 +151,7 @@ int main() {
     DEMSim.SetInitBinNumTarget(1e7);
     DEMSim.Initialize();
 
-    float time_end = 10.0;
+    float time_end = 30.0;
 
     path out_dir = current_path();
     out_dir += "/DemoOutput_KTerrainPrep_Part1";
@@ -138,46 +159,86 @@ int main() {
     unsigned int currframe = 0;
     unsigned int curr_step = 0;
 
-    float sample_halfheight = 0.4;
-    float sample_halfwidth_x = (world_y_size * 0.9) / 2;
+    float settletoleranceFactor = 0.18;
+    
+    // float targetMass = 0.60 * world_x_size * world_y_size * sampleheight * terrain_density;
+    float sample_halfwidth_x = (world_y_size * 0.8) / 2;
     float sample_halfwidth_y = (world_y_size * 0.9) / 2;
-    float offset_z = bottom + sample_halfheight + 0.1;
-    float settle_frame_time = 0.2;
-    float settle_batch_time = 2.0;
+    float offset_z = size_z_batch / 2 + settletoleranceFactor;
+    float settle_frame_time = 0.1;
+    float settle_batch_time = 0.1;
+
+    auto max_z_finder = DEMSim.CreateInspector("clump_max_z");
+    auto max_vel_finder = DEMSim.CreateInspector("clump_max_absv");
+    auto totalMass = DEMSim.CreateInspector("clump_mass");
+    float height = 0;
+    float current_z = bottom;
+    float maxvel = max_vel_finder->GetValue();
+    float mass = totalMass->GetValue();
 
     std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
-    while (DEMSim.GetNumClumps() < 0.25e6) {
-        // DEMSim.ClearCache(); // Clearing cache is no longer needed
-        float3 sample_center = make_float3(0, 0, offset_z);
-        std::cout << "Sample center: " << sample_center.x << ", " << sample_center.y << ", " << sample_center.z
-                  << std::endl;
-        std::vector<std::shared_ptr<DEMClumpTemplate>> heap_template_in_use;
-        std::vector<unsigned int> heap_family;
-        // Sample and add heap particles
-        auto heap_particles_xyz =
-            sampler.SampleBox(sample_center, make_float3(sample_halfwidth_x, sample_halfwidth_y, sample_halfheight));
-        for (unsigned int i = 0; i < heap_particles_xyz.size(); i++) {
-            int ind = std::round(discrete_dist(e1));
-            heap_template_in_use.push_back(ground_particle_templates.at(ind));
-            heap_family.push_back(ind);
+    bool consolidationEnds = false;
+    while (!consolidationEnds) {
+        if (current_z < (world_z_size - 2 * offset_z)) {
+            // DEMSim.ClearCache(); // Clearing cache is no longer needed
+            float3 sample_center = make_float3(0, 0, offset_z + current_z);
+            std::cout << "Sample center: " << sample_center.x << ", " << sample_center.y << ", " << sample_center.z
+                      << std::endl;
+            std::vector<std::shared_ptr<DEMClumpTemplate>> heap_template_in_use;
+            std::vector<unsigned int> heap_family;
+            // Sample and add heap particles
+            auto heap_particles_xyz = sampler.SampleBox(
+                sample_center, make_float3(sample_halfwidth_x, sample_halfwidth_y, sample_halfheight));
+            for (unsigned int i = 0; i < heap_particles_xyz.size(); i++) {
+                int ind = std::round(discrete_dist(e1));
+                heap_template_in_use.push_back(ground_particle_templates.at(ind));
+                heap_family.push_back(ind);
+            }
+            auto heap_particles = DEMSim.AddClumps(heap_template_in_use, heap_particles_xyz);
+            // Give ground particles a small initial velocity so they `collapse' at the start of the simulation
+            heap_particles->SetVel(make_float3(0.00, 0, -0.05));
+            heap_particles->SetFamilies(heap_family);
+            DEMSim.UpdateClumps();
+            std::cout << "Current number of clumps: " << DEMSim.GetNumClumps() << std::endl;
         }
-        auto heap_particles = DEMSim.AddClumps(heap_template_in_use, heap_particles_xyz);
-        // Give ground particles a small initial velocity so they `collapse' at the start of the simulation
-        heap_particles->SetVel(make_float3(0.00, 0, -0.05));
-        heap_particles->SetFamilies(heap_family);
-        DEMSim.UpdateClumps();
-        std::cout << "Current number of clumps: " << DEMSim.GetNumClumps() << std::endl;
 
         // Allow for some settling
         // Must DoDynamicsThenSync (not DoDynamics), as adding entities to the simulation is only allowed at a sync-ed
         // point of time.
-        for (float t = 0; t < settle_batch_time; t += settle_frame_time) {
-            std::cout << "Frame: " << currframe << std::endl;
-            char filename[200];
-            sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), currframe++);
-            DEMSim.WriteSphereFile(std::string(filename));
-            DEMSim.DoDynamicsThenSync(settle_frame_time);
+
+        std::cout << "Frame: " << currframe << std::endl;
+        char filename[200];
+        sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), currframe);
+        DEMSim.WriteSphereFile(std::string(filename));
+        DEMSim.DoDynamicsThenSync(settle_frame_time);
+        current_z = max_z_finder->GetValue();
+        maxvel = max_vel_finder->GetValue();
+        mass = totalMass->GetValue();
+
+        std::cout << "Total mass: " << mass << std::endl;
+
+        if (DEMSim.GetNumClumps() > 0.25e6) {
+            consolidationEnds = true;
+            DEMSim.ChangeFamily(10, 9);
+            std::cout << "Consolidating for one second" << std::endl;
+            auto max_z_finder = DEMSim.CreateInspector("clump_max_z");
+            auto min_z_finder = DEMSim.CreateInspector("clump_min_z");
+            for (float t = 0; t < 1.00; t += 0.025) {
+                std::cout << "Frame: " << currframe << std::endl;
+                char filename[200];
+                sprintf(filename, "%s/DEMdemo_output_%04d.csv", out_dir.c_str(), currframe);
+                DEMSim.WriteSphereFile(std::string(filename));
+
+                currframe++;
+                float terrain_max_z = max_z_finder->GetValue();
+                float terrain_min_z = min_z_finder->GetValue();
+                std::cout << "Consolidation: " << terrain_max_z - terrain_min_z << std::endl;
+                DEMSim.DoDynamics(0.025);
+            }
+            break;
         }
+        currframe++;
+        std::cout << "Current z: " << current_z << " with max vel: " << maxvel << std::endl;
 
         DEMSim.ShowThreadCollaborationStats();
     }
