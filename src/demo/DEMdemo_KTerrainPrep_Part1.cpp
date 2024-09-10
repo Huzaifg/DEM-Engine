@@ -69,6 +69,7 @@ int main() {
     // float3 fine_MOI = make_float3(0.9200936, 1.8532078, 2.0483853) * terrain_density;
     // Scale the template we just created
     std::vector<double> scales = {0.04040, 0.019392727, 0.007272727, 0.003636363, 0.001818182};
+    // std::vector<double> scales = {0.007272727};
     // Then load it to system
     std::shared_ptr<DEMClumpTemplate> oversized_template = DEMSim.LoadClumpType(
         oversized_mass, oversized_MOI, GetDEMEDataFile("clumps/komatsu_oversized.csv"), mat_type_terrain);
@@ -79,6 +80,8 @@ int main() {
     std::vector<std::shared_ptr<DEMClumpTemplate>> ground_particle_templates = {
         oversized_template, large_template, medium_template, DEMSim.Duplicate(medium_template),
         DEMSim.Duplicate(medium_template)};
+
+    // std::vector<std::shared_ptr<DEMClumpTemplate>> ground_particle_templates = {medium_template};
 
     // Now scale those templates
     for (int i = 0; i < scales.size(); i++) {
@@ -95,6 +98,7 @@ int main() {
     // Instatiate particles with a probability that is in line with their weight distribution.
     // For now, Undersized percentage has been added to fine
     std::vector<double> weight_perc = {0.05, 0.15, 0.25, 0.25, 0.3};
+    // std::vector<double> weight_perc = {1};
     std::vector<double> grain_perc;
     for (int i = 0; i < scales.size(); i++) {
         grain_perc.push_back(weight_perc.at(i) / std::pow(scales.at(i), 3));
@@ -110,7 +114,7 @@ int main() {
     std::discrete_distribution<int> discrete_dist(grain_perc.begin(), grain_perc.end());
 
     // Sampler to use
-    HCPSampler sampler(scales.at(0) * 2.2);
+    HCPSampler sampler(scales.at(0) * 5);
 
     // Make ready for simulation
     float step_size = 1e-6;
@@ -135,9 +139,9 @@ int main() {
     unsigned int curr_step = 0;
 
     float sample_halfheight = 0.4;
-    float sample_halfwidth_x = (world_y_size * 0.96) / 2;
-    float sample_halfwidth_y = (world_y_size * 0.96) / 2;
-    float offset_z = bottom + sample_halfheight + 0.15;
+    float sample_halfwidth_x = (world_y_size * 0.9) / 2;
+    float sample_halfwidth_y = (world_y_size * 0.9) / 2;
+    float offset_z = bottom + sample_halfheight + 0.1;
     float settle_frame_time = 0.2;
     float settle_batch_time = 2.0;
 
@@ -145,6 +149,8 @@ int main() {
     while (DEMSim.GetNumClumps() < 0.25e6) {
         // DEMSim.ClearCache(); // Clearing cache is no longer needed
         float3 sample_center = make_float3(0, 0, offset_z);
+        std::cout << "Sample center: " << sample_center.x << ", " << sample_center.y << ", " << sample_center.z
+                  << std::endl;
         std::vector<std::shared_ptr<DEMClumpTemplate>> heap_template_in_use;
         std::vector<unsigned int> heap_family;
         // Sample and add heap particles
